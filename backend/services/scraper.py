@@ -5,7 +5,7 @@ import os
 import praw
 from typing import Literal
 
-from backend.db.mongo import close_db, connect_db, get_last_timestamp, save_post, drop_collections, update_last_timestamp
+from backend.db.mongo import close_db, connect_db, save_post
 load_dotenv()
 # client_id=os.getenv("CLIENT_ID", "")
 # client_secret=os.getenv("CLIENT_SECRET", "")
@@ -15,7 +15,7 @@ load_dotenv()
 class Scraper(object):
     def __init__(self):
         self.TARGET_SUBS = os.getenv(
-            "TARGET_SUBS", 'Futurology+worldnews+technology+MachineLearning+artificial').split("+")
+            "TARGET_SUBS", "Futurology+worldnews+technology+MachineLearning+artificial").split("+")
         self.KEYWORDS = os.getenv(
             "KEYWORDS", 'ai+artificial intelligence+gpt+openai+automation+machine learning+deep learning').split("+")
 
@@ -64,12 +64,9 @@ class RedditScraper(Scraper):
 
         return data
 
-    def scrape(self, type: Literal["top", "hot", "new", "rising"] = "new", limit: int = 25, incremental: bool = True):
+    def scrape(self, type: Literal["top", "hot", "new", "rising"] = "top", limit: int = 25):
         for sub in self.TARGET_SUBS:
             subreddit = self.praw.subreddit(sub)
-            last_created_utc = get_last_timestamp(sub)
-            new_last_created_utc = last_created_utc
-            
             if type == "top":
                 posts = subreddit.top(limit=limit)
             elif type == "hot":
@@ -80,25 +77,13 @@ class RedditScraper(Scraper):
                 posts = subreddit.rising(limit=limit)
             else:
                 raise ValueError(f"Unsupported Scraping Type: {type}")
-            new_posts_count = 0
+
             for post in posts:
-                
-                if incremental and post.created_utc <= last_created_utc:
-                    continue
-                
                 if self.post_mentions_ai(post):
                     doc = self.extract_post_data(post)
                     save_post(doc)
-                    new_posts_count += 1
                     print(f"✅ Saved post: {post.title[:60]}")
 
-                    if post.created_utc > new_last_created_utc:
-                        new_last_created_utc = post.created_utc
-
-            if incremental:
-                update_last_timestamp(sub, new_last_created_utc)
-                print(f"📅 Updated timestamp for r/{sub}: {new_last_created_utc}")
-            print(f"📈 Finished r/{sub}: {new_posts_count} posts saved.")
 
 
 class NewsApiScrapper(object):
@@ -119,9 +104,9 @@ class NewsApiScrapper(object):
 #     print(post.keys())
 def main():
     connect_db()
-    # drop_collections()
+    
     scraper = RedditScraper()
-    scraper.scrape(limit=500)
+    scraper.scrape()
     
     close_db()
 
